@@ -1,0 +1,32 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Global safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+    
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+    
+    match /contractors/{contractorId} {
+      allow read: if isValidId(contractorId);
+      allow create, update: if isValidId(contractorId) 
+        && request.resource.data.businessName is string 
+        && request.resource.data.businessName.size() <= 150
+        && request.resource.value.primaryTrade is string;
+      allow delete: if false;
+    }
+    
+    match /estimates/{estimateId} {
+      allow read: if isValidId(estimateId);
+      allow create, update: if isValidId(estimateId)
+        && request.resource.data.contractorId is string
+        && request.resource.data.contractorId.size() <= 128;
+      allow delete: if isValidId(estimateId);
+    }
+    
+  }
+}

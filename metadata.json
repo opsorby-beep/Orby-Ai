@@ -1,0 +1,6 @@
+{
+  "name": "Orby - AI Contractor Estimator",
+  "description": "Autonomous AI business companion and visual pricing engine for home service contractors.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
