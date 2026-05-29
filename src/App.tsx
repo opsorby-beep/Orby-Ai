@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
+import { AppRouter } from "./components/AppRouter";
 import { EstimateResult, SavedEstimate, TradeType, AppTheme } from "./types";
 import { SampleJobsList } from "./components/SampleJobs";
 import { SavedCollection } from "./components/SavedCollection";
 import { EstimateView } from "./components/EstimateView";
 import { InvoiceBuilder } from "./components/InvoiceBuilder";
 import { collection, doc, setDoc, getDoc, deleteDoc, query, where, getDocs } from "firebase/firestore";
-import { db, handleFirestoreError, OperationType } from "./firebase";
+import { db, auth as Auth, handleFirestoreError, OperationType } from "./firebase";
 import { 
   Camera, 
   Sparkles, 
@@ -106,6 +108,20 @@ const APP_THEMES: Record<string, AppTheme> = {
 };
 
 export default function App() {
+  const navigate = useNavigate();
+
+  const handleProfileSynced = (profileData: any) => {
+    setOnboardedBusinessName(profileData.businessName);
+    setOnboardedTrade(profileData.trade);
+    setUserTradePreference(profileData.trade);
+    setOnboardedWhatsApp(profileData.whatsapp);
+    setOnboardedWebsite(profileData.website);
+    setOnboardedCity(profileData.city);
+    setOnboardedState(profileData.state);
+    setOnboardedZip(profileData.zip);
+    setSelectedThemeKey(profileData.themeKey);
+  };
+
   // Navigation View flow states
   // "landing" | "onboarding" | "dashboard"
   const [viewState, setViewState] = useState<"landing" | "onboarding" | "dashboard">("landing");
@@ -563,8 +579,7 @@ export default function App() {
   };
 
   const handleStartOnboarding = () => {
-    setViewState("onboarding");
-    setOnboardingStep(1);
+    navigate("/signup");
   };
 
   const handleCompleteOnboarding = async () => {
@@ -578,7 +593,7 @@ export default function App() {
       setContractorId(cId);
     }
 
-    // Save profile settings locally
+    // Save profile settings locally (accept raw inputs exactly)
     const profile = {
       businessName: onboardedBusinessName || "Apex Home Services",
       primaryTrade: chosenTrade,
@@ -592,7 +607,7 @@ export default function App() {
     };
     localStorage.setItem("orby_profile", JSON.stringify(profile));
     
-    // Cloud Firestore Setup - Save Business metadata permanently
+    // Cloud Firestore Setup - Save Business metadata permanently (with fail-safe fallback for frictionless onboarding)
     try {
       await setDoc(doc(db, "contractors", cId), {
         businessName: profile.businessName,
@@ -606,10 +621,10 @@ export default function App() {
         updatedAt: new Date().toISOString()
       });
     } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, `contractors/${cId}`);
+      console.warn("Firestore contractor save bypassed/failed, continuing onboarding for 100% frictionless pass-through:", err);
     }
 
-    // Configure default tradeoffs inside state
+    // Configure default tradeoffs inside state and route to dashboard immediately
     setUserTradePreference(chosenTrade);
     setViewState("dashboard");
     
@@ -676,73 +691,8 @@ export default function App() {
     }
   ];
 
-  return (
-    <div className={`min-h-screen ${modeBg} ${modeText} font-sans pb-16 relative transition-colors duration-500 selection:bg-accent-dynamic selection:text-black`}>
-      
-      {/* Dynamic CSS Variables Integration for Custom themes */}
-      <style>{`
-        :root {
-          --color-accent: ${theme.primaryHex};
-        }
-        .text-accent-dynamic { color: ${theme.primaryHex}; }
-        .bg-accent-dynamic { background-color: ${theme.primaryHex}; }
-        .border-accent-dynamic { border-color: ${theme.primaryHex}; }
-        .focus-border-accent:focus { border-color: ${theme.primaryHex} !important; }
-        
-        ${isDayMode ? `
-          body {
-            background-color: #F8FAFC !important;
-            color: #0F172A !important;
-          }
-          .aurora-radial {
-            background-image: radial-gradient(circle at 50% 0px, ${theme.primaryHex}0c 0%, transparent 55%) !important;
-          }
-          /* High contrast readability elements for Day Mode */
-          input, textarea, select {
-            color: #0F172A !important;
-          }
-        ` : `
-          .aurora-radial {
-            background-image: radial-gradient(circle at 50% 0px, ${theme.primaryHex}1a 0%, transparent 60%);
-          }
-        `}
-
-        @media print {
-          body * {
-            visibility: hidden;
-            background-color: white !important;
-            color: black !important;
-          }
-          #invoice-builder-workspace, #invoice-builder-workspace * {
-            visibility: visible;
-          }
-          #invoice-builder-workspace {
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 100%;
-            border: none !important;
-            box-shadow: none !important;
-            padding: 0 !important;
-            color: black !important;
-            background: white !important;
-          }
-          #add-custom-item-submit, 
-          #add-custom-desc-input, 
-          #add-custom-cost-input, 
-          #save-estimate-btn, 
-          #share-proposal-btn, 
-          #print-proposal-btn,
-          #proposal-status-select,
-          #mock-link-toast {
-            display: none !important;
-          }
-        }
-      `}</style>
-
-      {/* RENDER VIEW 1: THE PUBLIC LANDING PAGE */}
-      {viewState === "landing" && (
-        <div className="aurora-radial">
+  const renderLanding = () => (
+    <div className="aurora-radial">
           {/* Landing Header */}
           <header className={`sticky top-0 z-40 transition-all duration-300 ${modeHeaderBg}`}>
             <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
@@ -1264,228 +1214,10 @@ export default function App() {
 
           
         </div>
-      )}
+  );
 
-      {/* RENDER VIEW 2: MULTI-THEME CONTRACTOR ONBOARDING PORTAL */}
-      {viewState === "onboarding" && (
-        <div className="max-w-xl mx-auto px-6 pt-14 pb-20 relative min-h-[85vh] flex flex-col justify-center">
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-current opacity-5 rounded-full blur-[100px] pointer-events-none" style={{ color: theme.primaryHex }}></div>
-          
-          <div className="bg-[#061512]/90 border border-zinc-800 p-8 space-y-6 shadow-2xl relative backdrop-blur-md">
-            {/* Onboarding steps indicator */}
-            <div className="flex justify-between items-center text-[10px] font-mono border-b border-zinc-800 pb-3">
-              <span className="text-zinc-500 uppercase font-bold">CONTRACTOR REGISTRATION GATEWAY</span>
-              <span className="text-accent-dynamic font-extrabold uppercase tracking-wide">Step {onboardingStep} of 2</span>
-            </div>
-
-            {onboardingStep === 1 && (
-              <div className="space-y-6">
-                <div className="space-y-2">
-                  <h3 className="font-serif italic text-2xl text-white">Identify Your Service Profile</h3>
-                  <p className="text-xs text-[#8E9F9B] font-sans leading-relaxed">
-                    Set up your business identifiers. Orby uses these baseline details to adjust automated line pre-populations.
-                  </p>
-                </div>
-
-                <div className="space-y-4">
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] uppercase font-mono font-bold text-[#8E9F9B] tracking-wider block">Company Business Name</label>
-                    <input 
-                      id="onboard-business-input"
-                      type="text"
-                      placeholder="e.g. Apex Deep Cleaners, Austin Detailing"
-                      value={onboardedBusinessName}
-                      onChange={(e) => setOnboardedBusinessName(e.target.value)}
-                      className="w-full text-xs text-white py-2.5 px-3 bg-black border border-zinc-800 rounded-none focus:outline-none focus:border-accent-dynamic"
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] uppercase font-mono font-bold text-[#8E9F9B] tracking-wider block">Primary Trade Segment</label>
-                    <select 
-                      id="onboard-trade-select"
-                      value={onboardedTrade}
-                      onChange={(e) => setOnboardedTrade(e.target.value)}
-                      className="w-full text-xs text-white py-2.5 px-3 bg-black border border-zinc-800 rounded-none focus:outline-none focus:border-accent-dynamic cursor-pointer font-sans"
-                    >
-                      <option value="Carpet Cleaning">Carpet Cleaning</option>
-                      <option value="House Cleaning">House Cleaning</option>
-                      <option value="Roofing">Roofing & Gutter Audit</option>
-                      <option value="Auto Detailing">Auto Detailing</option>
-                      <option value="Lawn & Landscaping">Lawn & Landscaping</option>
-                      <option value="Custom">Custom Trade Baseline</option>
-                    </select>
-                  </div>
-
-                  {onboardedTrade === "Custom" && (
-                    <div className="space-y-1.5 animate-in slide-in-from-top duration-150">
-                      <label className="text-[10px] uppercase font-mono font-bold text-[#8E9F9B] tracking-wider block">Enter Custom Trade Name</label>
-                      <input 
-                        id="onboard-custom-trade"
-                        type="text"
-                        placeholder="e.g. Gutter Repair, Handyman"
-                        value={customTrade}
-                        onChange={(e) => setCustomTrade(e.target.value)}
-                        className="w-full text-xs text-white py-2.5 px-3 bg-black border border-zinc-800 rounded-none focus:outline-none focus:border-accent-dynamic"
-                      />
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex gap-3 pt-2">
-                  <button 
-                    onClick={() => setViewState("landing")}
-                    className="flex-1 py-3 text-xs font-mono font-bold text-[#8E9F9B]/70 border border-zinc-800 bg-black hover:bg-neutral-900 transition"
-                  >
-                    Back to Home
-                  </button>
-                  <button 
-                    id="onboard-next-btn"
-                    onClick={() => {
-                      if (!onboardedBusinessName) {
-                        alert("Please provide your Company Business Name to unlock telemetry.");
-                        return;
-                      }
-                      setOnboardingStep(2);
-                    }}
-                    className={`flex-1 py-3 text-xs font-mono font-bold uppercase tracking-widest transition rounded-none cursor-pointer ${theme.glowBtn}`}
-                  >
-                    Continue Profile Setup
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {onboardingStep === 2 && (
-              <div className="space-y-6">
-                <div className="space-y-2">
-                  <h3 className="font-serif italic text-2xl text-white">Select Portal Workspace Theme</h3>
-                  <p className="text-xs text-[#8E9F9B] font-sans leading-relaxed">
-                    Pick a premium visual identity. Your selection immediately changes accent borders, status trackers, and checkout proposals.
-                  </p>
-                </div>
-
-                {/* Grid of Theme options */}
-                <div className="grid grid-cols-2 gap-3.5">
-                  {Object.values(APP_THEMES).map((thm) => {
-                    const isSelected = selectedThemeKey === thm.id;
-                    return (
-                      <button
-                        key={thm.id}
-                        id={`theme-select-${thm.id}`}
-                        onClick={() => setSelectedThemeKey(thm.id as any)}
-                        className={`p-4 text-left border cursor-pointer select-none transition-all duration-200 bg-black/40 ${
-                          isSelected 
-                            ? "border-white bg-[#061512]" 
-                            : "border-zinc-800 hover:border-zinc-700 hover:bg-[#061512]/50"
-                        }`}
-                        style={isSelected ? { boxShadow: `0 0 15px ${thm.primaryHex}15` } : {}}
-                      >
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="w-3.5 h-3.5 rounded-full" style={{ backgroundColor: thm.primaryHex }}></span>
-                          <span className="text-xs font-mono font-extrabold text-white">{thm.name}</span>
-                        </div>
-                        <p className="text-[9px] text-[#8E9F9B] font-mono leading-tight">Accent: {thm.primaryHex}</p>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* Visual Identity & Business Metadata Fields */}
-                <div className="space-y-4 pt-4 border-t border-zinc-800/40">
-                  <span className="text-[9px] font-mono uppercase tracking-widest text-accent-dynamic font-extrabold block">BUSINESS DISPATCH DETAILS (CLOUD BACKEND)</span>
-                  
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <label className="text-[10px] uppercase font-mono font-bold text-[#8E9F9B] tracking-wider block">WhatsApp Contact</label>
-                      <input 
-                        id="onboard-whatsapp"
-                        type="text"
-                        placeholder="e.g. +1 512 555 1234"
-                        value={onboardedWhatsApp}
-                        onChange={(e) => setOnboardedWhatsApp(e.target.value)}
-                        className="w-full text-xs text-white py-2 px-3 bg-black border border-zinc-800 rounded-none focus:outline-none focus:border-accent-dynamic"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] uppercase font-mono font-bold text-[#8E9F9B] tracking-wider block">Company Website</label>
-                      <input 
-                        id="onboard-website"
-                        type="text"
-                        placeholder="e.g. apexcleaners.com"
-                        value={onboardedWebsite}
-                        onChange={(e) => setOnboardedWebsite(e.target.value)}
-                        className="w-full text-xs text-white py-2 px-3 bg-black border border-zinc-800 rounded-none focus:outline-none focus:border-accent-dynamic"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-3">
-                    <div className="space-y-1">
-                      <label className="text-[10px] uppercase font-mono font-bold text-[#8E9F9B] tracking-wider block">City</label>
-                      <input 
-                        id="onboard-city"
-                        type="text"
-                        placeholder="e.g. Austin"
-                        value={onboardedCity}
-                        onChange={(e) => setOnboardedCity(e.target.value)}
-                        className="w-full text-xs text-white py-2 px-3 bg-black border border-zinc-800 rounded-none focus:outline-none focus:border-accent-dynamic"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] uppercase font-mono font-bold text-[#8E9F9B] tracking-wider block">State</label>
-                      <input 
-                        id="onboard-state"
-                        type="text"
-                        placeholder="e.g. TX"
-                        value={onboardedState}
-                        onChange={(e) => setOnboardedState(e.target.value)}
-                        className="w-full text-xs text-white py-2 px-3 bg-black border border-zinc-800 rounded-none focus:outline-none focus:border-accent-dynamic"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] uppercase font-mono font-bold text-[#8E9F9B] tracking-wider block">Zip Code</label>
-                      <input 
-                        id="onboard-zip"
-                        type="text"
-                        placeholder="e.g. 78701"
-                        value={onboardedZip}
-                        onChange={(e) => setOnboardedZip(e.target.value)}
-                        className="w-full text-xs text-white py-2 px-3 bg-black border border-zinc-800 rounded-none focus:outline-none focus:border-accent-dynamic"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="p-3 bg-black text-[#8E9F9B] font-mono text-[9px] uppercase tracking-wider leading-relaxed border border-zinc-800">
-                  <span className="text-white font-black block mb-0.5">☉ ACTIVE THEME SYNC ENGINE APPLICATION</span>
-                  Visual indicators and PDF invoice layout matrices will render using the {APP_THEMES[selectedThemeKey].name} palette.
-                </div>
-
-                <div className="flex gap-3 pt-2">
-                  <button 
-                    onClick={() => setOnboardingStep(1)}
-                    className="flex-1 py-3 text-xs font-mono font-bold text-[#8E9F9B]/70 border border-zinc-800 bg-black hover:bg-neutral-900 transition"
-                  >
-                    Previous Step
-                  </button>
-                  <button 
-                    id="onboard-finish-btn"
-                    onClick={handleCompleteOnboarding}
-                    className={`flex-1 py-3 text-xs font-mono font-bold uppercase tracking-widest transition rounded-none cursor-pointer ${theme.glowBtn}`}
-                  >
-                    Finish Registry Sync
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* RENDER VIEW 3: THE COMPANION ARCHITECTURE WORKSPACE DASHBOARD */}
-      {viewState === "dashboard" && (
-        <div className="aurora-radial">
+  const renderDashboard = () => (
+    <div className="aurora-radial">
           {/* Dashboard Header Bar */}
           <header className={`sticky top-0 z-40 transition-all duration-300 ${modeHeaderBg}`}>
             <div className="max-w-7xl mx-auto px-6 py-4 flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -1856,7 +1588,78 @@ export default function App() {
 
           </main>
         </div>
-      )}
+  );
+
+  return (
+    <div className={`min-h-screen ${modeBg} ${modeText} font-sans pb-16 relative transition-colors duration-500 selection:bg-accent-dynamic selection:text-black`}>
+      
+      {/* Dynamic CSS Variables Integration for Custom themes */}
+      <style>{`
+        :root {
+          --color-accent: ${theme.primaryHex};
+        }
+        .text-accent-dynamic { color: ${theme.primaryHex}; }
+        .bg-accent-dynamic { background-color: ${theme.primaryHex}; }
+        .border-accent-dynamic { border-color: ${theme.primaryHex}; }
+        .focus-border-accent:focus { border-color: ${theme.primaryHex} !important; }
+        
+        ${isDayMode ? `
+          body {
+            background-color: #F8FAFC !important;
+            color: #0F172A !important;
+          }
+          .aurora-radial {
+            background-image: radial-gradient(circle at 50% 0px, ${theme.primaryHex}0c 0%, transparent 55%) !important;
+          }
+          /* High contrast readability elements for Day Mode */
+          input, textarea, select {
+            color: #0F172A !important;
+          }
+        ` : `
+          .aurora-radial {
+            background-image: radial-gradient(circle at 50% 0px, ${theme.primaryHex}1a 0%, transparent 60%);
+          }
+        `}
+
+        @media print {
+          body * {
+            visibility: hidden;
+            background-color: white !important;
+            color: black !important;
+          }
+          #invoice-builder-workspace, #invoice-builder-workspace * {
+            visibility: visible;
+          }
+          #invoice-builder-workspace {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            border: none !important;
+            box-shadow: none !important;
+            padding: 0 !important;
+            color: black !important;
+            background: white !important;
+          }
+          #add-custom-item-submit, 
+          #add-custom-desc-input, 
+          #add-custom-cost-input, 
+          #save-estimate-btn, 
+          #share-proposal-btn, 
+          #print-proposal-btn,
+          #proposal-status-select,
+          #mock-link-toast {
+            display: none !important;
+          }
+        }
+      `}</style>
+
+      <AppRouter 
+        renderLanding={renderLanding}
+        renderDashboard={renderDashboard}
+        onProfileSynced={handleProfileSynced}
+        selectedTheme={theme}
+      />
 
       {/* Floating 24/7 WhatsApp badge in bottom corner */}
       <div className="fixed bottom-6 right-6 z-50">

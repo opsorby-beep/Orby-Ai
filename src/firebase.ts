@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
+import { getAuth, GoogleAuthProvider } from "firebase/auth";
 import { getFirestore, doc, getDocFromServer } from "firebase/firestore";
 
 const firebaseConfig = {
@@ -14,6 +14,10 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 export const auth = getAuth(app);
+export const GoogleProvider = new GoogleAuthProvider();
+
+// Standard uppercase naming exports requested by the user
+export { app as App, auth as Auth, db as DB };
 
 export enum OperationType {
   CREATE = "create",
@@ -51,6 +55,7 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   console.error("Firestore Error: ", JSON.stringify(errInfo));
   throw new Error(JSON.stringify(errInfo));
 }
+
 
 // Connection check is handled dynamically on-demand during contractor operations.
 
